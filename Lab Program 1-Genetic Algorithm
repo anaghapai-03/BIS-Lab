@@ -1,0 +1,91 @@
+import cv2
+import numpy as np
+from google.colab import files
+import io
+from IPython.display import Image, display
+
+def calculate_fitness(candidate, target):
+   
+    mse = np.mean((target.astype("float") - candidate.astype("float")) ** 2)
+    return 1.0 / (1.0 + mse)
+
+def genetic_algorithm_image(target_path, pop_size=20, generations=1000, mutation_rate=0.05):
+    
+    target = cv2.imread(target_path, cv2.IMREAD_GRAYSCALE)
+    if target is None:
+        raise FileNotFoundError(f"Could not load image from {target_path}")
+
+    height, width = target.shape
+    img_size = height * width
+
+    population = np.random.randint(0, 256, (pop_size, height, width), dtype=np.uint8)
+
+    print(f"Starting GA... Target dimensions: {width}x{height}")
+
+    for generation in range(generations):
+       
+        fitness_scores = np.array([calculate_fitness(ind, target) for ind in population])
+
+       
+        best_idx = np.argmax(fitness_scores)
+        best_fitness = fitness_scores[best_idx]
+        best_individual = population[best_idx]
+
+        if generation % 100 == 0 or generation == generations - 1:
+            print(f"Generation {generation:4d} | Best Fitness: {best_fitness:.6f}")
+            # Optional: Save intermediate result
+            # cv2.imwrite(f"gen_{generation}.png", best_individual) # Uncomment to save intermediate generations
+
+        
+        new_population = []
+        new_population.append(best_individual.copy())
+
+        while len(new_population) < pop_size:
+          
+            t1_indices = np.random.choice(pop_size, 3, replace=False)
+            parent1 = population[t1_indices[np.argmax(fitness_scores[t1_indices])]]
+
+            t2_indices = np.random.choice(pop_size, 3, replace=False)
+            parent2 = population[t2_indices[np.argmax(fitness_scores[t2_indices])]]
+
+            mask = np.random.rand(height, width) < 0.5
+            offspring = np.where(mask, parent1, parent2)
+
+            mutation_mask = np.random.rand(height, width) < mutation_rate
+            if np.any(mutation_mask):
+                random_pixels = np.random.randint(0, 256, np.sum(mutation_mask), dtype=np.uint8)
+                offspring[mutation_mask] = random_pixels
+
+            new_population.append(offspring)
+
+        population = np.array(new_population)
+
+    return best_individual
+
+print("Please upload your target image (e.g., a small grayscale PNG for faster processing).")
+uploaded = files.upload()
+
+uploaded_filename = None
+for fn in uploaded.keys():
+    uploaded_filename = fn
+    print(f'User uploaded file "{uploaded_filename}"')
+    break # Assuming only one file will be uploaded for now
+
+if uploaded_filename:
+    print("\nStarting Genetic Algorithm...")
+    try:
+        final_image = genetic_algorithm_image(uploaded_filename, pop_size=30, generations=500, mutation_rate=0.02)
+        output_filename = "final_result.png"
+        cv2.imwrite(output_filename, final_image)
+        print(f"GA complete. Final image saved as '{output_filename}'.")
+        
+      
+        print("Displaying final image:")
+        display(Image(filename=output_filename))
+
+    except FileNotFoundError:
+        print(f"Error: The uploaded file '{uploaded_filename}' was not found or could not be loaded as an image.")
+    except Exception as e:
+        print(f"An error occurred during GA execution: {e}")
+else:
+    print("No file was uploaded. Please run this cell again and upload an image.")
